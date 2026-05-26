@@ -5,6 +5,8 @@
 #include "esp_wifi.h"
 #include "config.h"
 #include <MD5Builder.h>
+#define TX_POWER -59
+#define N_FACTOR 3.0
 
 // ─── Konstanter ──────────────────────────────────────────────────────────────
 #define SNIFF_DURATION_MS 10000
@@ -173,6 +175,12 @@ String hashMAC(uint8_t *mac)
   return md5.toString();
 }
 
+// ─── Beregn afstand fra RSSI ──────────────────────────────────────────────────
+float calculateDistance(int rssi)
+{
+  return pow(10.0, (TX_POWER - rssi) / (10.0 * N_FACTOR));
+}
+
 // ─── Send målinger via MQTT ──────────────────────────────────────────────────
 void sendMeasurements()
 {
@@ -182,11 +190,12 @@ void sendMeasurements()
   {
     String macHash = hashMAC(measurements[i].mac);
     int avgRssi = measurements[i].rssiSum / measurements[i].count;
+    float distance = calculateDistance(avgRssi);
 
-    char payload[160];
+    char payload[180];
     snprintf(payload, sizeof(payload),
-             "{\"id\":\"%s\",\"rssi\":%d,\"x\":%d,\"y\":%d,\"time\":\"%s\"}",
-             macHash.c_str(), avgRssi, MY_X, MY_Y, timestamp.c_str());
+             "{\"id\":\"%s\",\"rssi\":%d,\"distance\":%.2f,\"x\":%d,\"y\":%d,\"time\":\"%s\"}",
+             macHash.c_str(), avgRssi, distance, MY_X, MY_Y, timestamp.c_str());
 
     mqttClient.publish(MQTT_TOPIC, payload);
     Serial.println(payload);
