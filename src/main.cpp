@@ -4,6 +4,7 @@
 #include <PubSubClient.h>
 #include "esp_wifi.h"
 #include "config.h"
+#include <MD5Builder.h>
 
 // ─── Konstanter ──────────────────────────────────────────────────────────────
 #define SNIFF_DURATION_MS 10000
@@ -158,6 +159,20 @@ void connectMQTT()
   }
 }
 
+// ─── Hash MAC-adresse ─────────────────────────────────────────────────────────
+String hashMAC(uint8_t *mac)
+{
+  char macStr[18];
+  snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+
+  MD5Builder md5;
+  md5.begin();
+  md5.add(macStr);
+  md5.calculate();
+  return md5.toString();
+}
+
 // ─── Send målinger via MQTT ──────────────────────────────────────────────────
 void sendMeasurements()
 {
@@ -165,14 +180,13 @@ void sendMeasurements()
 
   for (int i = 0; i < measurementCount; i++)
   {
-    uint8_t *mac = measurements[i].mac;
+    String macHash = hashMAC(measurements[i].mac);
     int avgRssi = measurements[i].rssiSum / measurements[i].count;
 
     char payload[160];
     snprintf(payload, sizeof(payload),
-             "{\"mac\":\"%02X:%02X:%02X:%02X:%02X:%02X\",\"rssi\":%d,\"x\":%d,\"y\":%d,\"time\":\"%s\"}",
-             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
-             avgRssi, MY_X, MY_Y, timestamp.c_str());
+             "{\"id\":\"%s\",\"rssi\":%d,\"x\":%d,\"y\":%d,\"time\":\"%s\"}",
+             macHash.c_str(), avgRssi, MY_X, MY_Y, timestamp.c_str());
 
     mqttClient.publish(MQTT_TOPIC, payload);
     Serial.println(payload);
