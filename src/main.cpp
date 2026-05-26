@@ -5,18 +5,64 @@
 #include "esp_wifi.h"
 #include "config.h"
 
-#pragma region Global objects
+// ─── Konstanter ──────────────────────────────────────────────────────────────
+#define SNIFF_DURATION_MS 10000
+#define MAX_ENTRIES 50
 
-// ─── Globalt wifi objekt ─────────────────────────────────────────────────────
+// ─── Datastruktur til en måling ──────────────────────────────────────────────
+struct Measurement
+{
+  uint8_t mac[6];
+  int rssi;
+};
+
+// ─── Globale variabler ───────────────────────────────────────────────────────
+Measurement measurements[MAX_ENTRIES];
+int measurementCount = 0;
+
 WiFiClientSecure secureClient;
 PubSubClient mqttClient(secureClient);
 
-#pragma endregion
-#pragma region Wi-Fi og MQTT setup
+// ─── Sniffer callback ────────────────────────────────────────────────────────
+void wifi_sniffer_callback(void *buf, wifi_promiscuous_pkt_type_t type)
+{
+  if (measurementCount >= MAX_ENTRIES)
+    return;
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Wifi
-// ─────────────────────────────────────────────────────────────────────────────
+  wifi_promiscuous_pkt_t *pkt = (wifi_promiscuous_pkt_t *)buf;
+  uint8_t *mac = pkt->payload + 10;
+  int rssi = pkt->rx_ctrl.rssi;
+
+  // Gem målingen
+  memcpy(measurements[measurementCount].mac, mac, 6);
+  measurements[measurementCount].rssi = rssi;
+  measurementCount++;
+}
+
+// ─── Start sniffing ──────────────────────────────────────────────────────────
+void startSniffing()
+{
+  measurementCount = 0;
+
+  wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+  esp_wifi_init(&cfg);
+  esp_wifi_set_storage(WIFI_STORAGE_RAM);
+  esp_wifi_set_mode(WIFI_MODE_NULL);
+  esp_wifi_start();
+  esp_wifi_set_promiscuous(true);
+  esp_wifi_set_promiscuous_rx_cb(&wifi_sniffer_callback);
+
+  Serial.println("Sniffing starter...");
+  delay(SNIFF_DURATION_MS);
+
+  esp_wifi_set_promiscuous(false);
+  esp_wifi_stop();
+  esp_wifi_deinit();
+
+  Serial.printf("Sniffing slut – %d målinger\n", measurementCount);
+}
+
+// ─── WiFi forbindelse ────────────────────────────────────────────────────────
 void connectWiFi()
 {
   Serial.printf("Forbinder til Wi-Fi: %s\n", WIFI_SSID);
@@ -36,22 +82,15 @@ void connectWiFi()
   }
   else
   {
-    Serial.println("\nWi-Fi fejlede – går i deep sleep og prøver igen.");
-    esp_deep_sleep(DEEP_SLEEP_DURATION_S * 1000000ULL);
+    Serial.println("\nWi-Fi fejlede!");
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  MQTT
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── MQTT forbindelse ────────────────────────────────────────────────────────
 void connectMQTT()
 {
   secureClient.setCACert(CA_CERT);
-  // secureClient.setInsecure();
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
-  mqttClient.setKeepAlive(30);
-
-  Serial.printf("Forbinder til MQTT: %s:%d\n", MQTT_HOST, MQTT_PORT);
 
   int attempts = 0;
   while (!mqttClient.connected() && attempts < 5)
@@ -62,75 +101,51 @@ void connectMQTT()
     }
     else
     {
-      Serial.printf("MQTT fejl: %d – prøver igen om 2 sek.\n", mqttClient.state());
+      Serial.printf("MQTT fejl: %d\n", mqttClient.state());
       delay(2000);
       attempts++;
     }
   }
 }
 
-#pragma endregion
-#pragma region Time
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Hent ISO timestamp
-// ─────────────────────────────────────────────────────────────────────────────
-String getTimestamp()
+// ─── Send målinger via MQTT ──────────────────────────────────────────────────
+void sendMeasurements()
 {
-  struct tm timeInfo;
-  if (!getLocalTime(&timeInfo))
-    return "ukendt-tid";
-  char buf[30];
-  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &timeInfo);
-  return String(buf);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  NTP tidssynkronisering
-// ─────────────────────────────────────────────────────────────────────────────
-void syncTime()
-{
-  configTzTime(TIMEZONE, NTP_SERVER);
-  Serial.print("Venter på NTP sync");
-
-  struct tm timeInfo;
-  int attempts = 0;
-  while (!getLocalTime(&timeInfo) && attempts < 20)
+  for (int i = 0; i < measurementCount; i++)
   {
-    Serial.print(".");
-    delay(500);
-    attempts++;
-  }
+    uint8_t *mac = measurements[i].mac;
+    int rssi = measurements[i].rssi;
 
-  if (attempts < 20)
-  {
-    char buf[30];
-    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeInfo);
-    Serial.printf("\nTid synkroniseret: %s\n", buf);
-  }
-  else
-  {
-    Serial.println("\nNTP sync fejlede – fortsætter alligevel.");
+    char payload[128];
+    snprintf(payload, sizeof(payload),
+             "{\"mac\":\"%02X:%02X:%02X:%02X:%02X:%02X\",\"rssi\":%d,\"x\":%d,\"y\":%d}",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+             rssi, MY_X, MY_Y);
+
+    mqttClient.publish(MQTT_TOPIC, payload);
+    Serial.println(payload);
+    delay(10);
   }
 }
 
-#pragma endregion
-#pragma region Setup og loop
-
+// ─── Setup og loop ───────────────────────────────────────────────────────────
 void setup()
 {
   Serial.begin(115200);
-  connectWiFi();
-  syncTime();
-  connectMQTT();
 }
 
 void loop()
 {
-  if (!mqttClient.connected())
-    connectMQTT();
-  mqttClient.loop();
-  delay(100);
-}
+  // Fase 1: Snif
+  startSniffing();
 
-#pragma endregion
+  // Fase 2: Forbind og send
+  connectWiFi();
+  connectMQTT();
+  sendMeasurements();
+
+  // Fase 3: Afbryd WiFi igen
+  mqttClient.disconnect();
+  WiFi.disconnect(true);
+  delay(1000);
+}
