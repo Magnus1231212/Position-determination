@@ -13,7 +13,8 @@
 struct Measurement
 {
   uint8_t mac[6];
-  int rssi;
+  int rssiSum;
+  int count;
 };
 
 // ─── Globale variabler ───────────────────────────────────────────────────────
@@ -26,17 +27,66 @@ PubSubClient mqttClient(secureClient);
 // ─── Sniffer callback ────────────────────────────────────────────────────────
 void wifi_sniffer_callback(void *buf, wifi_promiscuous_pkt_type_t type)
 {
-  if (measurementCount >= MAX_ENTRIES)
-    return;
-
   wifi_promiscuous_pkt_t *pkt = (wifi_promiscuous_pkt_t *)buf;
   uint8_t *mac = pkt->payload + 10;
   int rssi = pkt->rx_ctrl.rssi;
 
-  // Gem målingen
+  // Tjek om MAC allerede er i listen
+  for (int i = 0; i < measurementCount; i++)
+  {
+    if (memcmp(measurements[i].mac, mac, 6) == 0)
+    {
+      measurements[i].rssiSum += rssi;
+      measurements[i].count++;
+      return;
+    }
+  }
+
+  // Ny MAC — tilføj hvis der er plads
+  if (measurementCount >= MAX_ENTRIES)
+    return;
   memcpy(measurements[measurementCount].mac, mac, 6);
-  measurements[measurementCount].rssi = rssi;
+  measurements[measurementCount].rssiSum = rssi;
+  measurements[measurementCount].count = 1;
   measurementCount++;
+}
+
+// ─── Hent ISO timestamp ───────────────────────────────────────────────────────
+String getTimestamp()
+{
+  struct tm timeInfo;
+  if (!getLocalTime(&timeInfo))
+    return "ukendt-tid";
+  char buf[30];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &timeInfo);
+  return String(buf);
+}
+
+// ─── NTP tidssynkronisering ───────────────────────────────────────────────────
+void syncTime()
+{
+  configTzTime(TIMEZONE, NTP_SERVER);
+  Serial.print("Venter på NTP sync");
+
+  struct tm timeInfo;
+  int attempts = 0;
+  while (!getLocalTime(&timeInfo) && attempts < 20)
+  {
+    Serial.print(".");
+    delay(500);
+    attempts++;
+  }
+
+  if (attempts < 20)
+  {
+    char buf[30];
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeInfo);
+    Serial.printf("\nTid synkroniseret: %s\n", buf);
+  }
+  else
+  {
+    Serial.println("\nNTP sync fejlede – fortsætter alligevel.");
+  }
 }
 
 // ─── Start sniffing ──────────────────────────────────────────────────────────
@@ -111,16 +161,18 @@ void connectMQTT()
 // ─── Send målinger via MQTT ──────────────────────────────────────────────────
 void sendMeasurements()
 {
+  String timestamp = getTimestamp();
+
   for (int i = 0; i < measurementCount; i++)
   {
     uint8_t *mac = measurements[i].mac;
-    int rssi = measurements[i].rssi;
+    int avgRssi = measurements[i].rssiSum / measurements[i].count;
 
-    char payload[128];
+    char payload[160];
     snprintf(payload, sizeof(payload),
-             "{\"mac\":\"%02X:%02X:%02X:%02X:%02X:%02X\",\"rssi\":%d,\"x\":%d,\"y\":%d}",
+             "{\"mac\":\"%02X:%02X:%02X:%02X:%02X:%02X\",\"rssi\":%d,\"x\":%d,\"y\":%d,\"time\":\"%s\"}",
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
-             rssi, MY_X, MY_Y);
+             avgRssi, MY_X, MY_Y, timestamp.c_str());
 
     mqttClient.publish(MQTT_TOPIC, payload);
     Serial.println(payload);
@@ -132,6 +184,10 @@ void sendMeasurements()
 void setup()
 {
   Serial.begin(115200);
+  connectWiFi();
+  syncTime();
+  WiFi.disconnect(true);
+  delay(500);
 }
 
 void loop()
