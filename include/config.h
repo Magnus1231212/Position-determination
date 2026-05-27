@@ -10,7 +10,6 @@
 #define MQTT_USER "device08"
 #define MQTT_PASS "gp8MdyhA"
 #define MQTT_TOPIC "/devices/device08"
-#define MQTT_CLIENT_ID "device15"
 
 // ─── ESP-NOW ──────────────────────────────────────────────────────────────────
 #define MASTER_MAC {0xEC, 0x64, 0xC9, 0x85, 0xEF, 0x98}
