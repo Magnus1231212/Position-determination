@@ -13,32 +13,18 @@ extern void startSniffer();
 extern void connectWiFi();
 extern void syncTime();
 extern void connectMQTT();
-extern void mqttLoop();
+extern void mqttLoop(); // ← denne manglede måske
 #endif
 
 void setup()
 {
-  Serial.begin(115200);
-  delay(100);
-
-#ifdef ROLE_MASTER
-  connectWiFi();
-  syncTime();
-  connectMQTT();
-#else
-  WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-#endif
-
-  initEspNow();
-
-#ifdef ROLE_SLAVE
-  startSniffer();
-#endif
-
-  Serial.println("[System] Klar");
+  // ... samme som før
 }
 
 void loop()
 {
+#ifdef ROLE_MASTER
+  mqttLoop();
+#endif
+  delay(10);
 }
