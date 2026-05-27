@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include "config.h"
+#include "esp_wifi.h"
 
 extern void initEspNow();
 
@@ -14,6 +15,7 @@ extern void connectWiFi();
 extern void syncTime();
 extern void connectMQTT();
 extern void mqttLoop();
+extern void startMasterSniffer();
 #endif
 
 void setup()
@@ -25,6 +27,7 @@ void setup()
   connectWiFi();
   syncTime();
   connectMQTT();
+  startMasterSniffer();
 #else
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();

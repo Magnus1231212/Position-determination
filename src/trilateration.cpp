@@ -29,10 +29,10 @@ float rssiToDistance(int rssi)
 
 String hashMac(const uint8_t *mac)
 {
-    uint32_t h = 5381;
-    for (int i = 0; i < 6; i++)
-        h = h * 33 + mac[i];
-    return String(h, HEX);
+    char buf[9];
+    uint32_t r = esp_random();
+    snprintf(buf, sizeof(buf), "%08x", r);
+    return String(buf);
 }
 
 static StationReading *getSlot(const char *id)
