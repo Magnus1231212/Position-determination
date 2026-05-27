@@ -12,13 +12,11 @@
 #define MQTT_TOPIC "/devices/device08"
 #define MQTT_CLIENT_ID "device15"
 
+// ─── ESP-NOW ──────────────────────────────────────────────────────────────────
+#define MASTER_MAC {0xEC, 0x64, 0xC9, 0x85, 0xEF, 0x98}
+
 // ─── Deep Sleep ──────────────────────────────────────────────────────────────
 #define DEEP_SLEEP_DURATION_S 60
-
-// ─── Cordinates ─────────────────────────────────────────────────────────────────
-
-#define MY_X 0
-#define MY_Y 0
 
 // ─── NTP / Tidszone ───────────────────────────────────────────────────────────
 #define NTP_SERVER "pool.ntp.org"
