@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include "config.h"
+#include "esp_wifi.h"
 
 #ifdef ROLE_MASTER
 
@@ -20,6 +21,7 @@ void connectWiFi()
     {
         Serial.printf(" OK: %s\n", WiFi.localIP().toString().c_str());
         Serial.printf("Kanal: %d\n", WiFi.channel());
+        esp_wifi_set_channel(11, WIFI_SECOND_CHAN_NONE);
     }
     else
     {

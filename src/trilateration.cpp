@@ -4,7 +4,7 @@
 #include "shared_types.h"
 
 #define MAX_SLAVES 8
-#define READING_TTL 3000
+#define READING_TTL 10000
 
 struct StationReading
 {

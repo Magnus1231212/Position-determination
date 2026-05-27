@@ -13,7 +13,7 @@
 // then use 11 here
 // ======================================================
 
-#define ESPNOW_CHANNEL 11
+#define ESPNOW_CHANNEL 2
 
 #ifdef ROLE_MASTER
 extern void updateStation(const char *id, float x, float y, float dist);
@@ -138,6 +138,7 @@ void initEspNow()
 
 #ifdef ROLE_MASTER
 
+    esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
     esp_now_register_recv_cb(onReceive);
 
     Serial.println("[ESP-NOW] MASTER READY");
