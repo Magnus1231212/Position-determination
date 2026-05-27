@@ -171,6 +171,9 @@ void initEspNow()
 
     esp_err_t peerResult =
         esp_now_add_peer(&peer);
+    esp_now_peer_info_t checkPeer = {};
+    esp_err_t checkResult = esp_now_get_peer(masterMac, &checkPeer);
+    Serial.printf("[ESP-NOW] Peer check: %d\n", checkResult);
 
     if (peerResult != ESP_OK)
     {
@@ -208,6 +211,7 @@ void espnowSend(const EspNowReading &r)
         Serial.printf("[ESP-NOW] Send FAILED: %d\n",
                       result);
     }
+    delay(100);
 }
 
 #endif

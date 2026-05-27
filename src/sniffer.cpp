@@ -18,6 +18,13 @@ void IRAM_ATTR snifferCallback(void *buf, wifi_promiscuous_pkt_type_t type)
     if ((pkt->payload[0] & 0xFC) != 0x40)
         return;
 
+    // Throttle – send max én gang hvert 500ms
+    static unsigned long lastSend = 0;
+    unsigned long now = millis();
+    if (now - lastSend < 2000)
+        return;
+    lastSend = now;
+
     EspNowReading r;
     strncpy(r.device_id, MQTT_CLIENT_ID, sizeof(r.device_id));
 
@@ -37,15 +44,10 @@ void IRAM_ATTR snifferCallback(void *buf, wifi_promiscuous_pkt_type_t type)
 
 void startSniffer()
 {
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    esp_wifi_init(&cfg);
-    esp_wifi_set_storage(WIFI_STORAGE_RAM);
-    esp_wifi_set_mode(WIFI_MODE_NULL);
-    esp_wifi_start();
     esp_wifi_set_promiscuous(true);
     esp_wifi_set_promiscuous_rx_cb(&snifferCallback);
-    esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
-    Serial.printf("[Sniffer] Kører på kanal 6 — pos: (%.0f, %.0f)\n",
+    esp_wifi_set_channel(11, WIFI_SECOND_CHAN_NONE);
+    Serial.printf("[Sniffer] Kører på kanal 11 — pos: (%.0f, %.0f)\n",
                   (float)MY_X, (float)MY_Y);
 }
 
