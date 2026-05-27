@@ -1,9 +1,8 @@
 #include <Arduino.h>
 #include "config.h"
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Hent ISO timestamp
-// ─────────────────────────────────────────────────────────────────────────────
+#ifdef ROLE_MASTER
+
 String getTimestamp()
 {
     struct tm timeInfo;
@@ -14,13 +13,10 @@ String getTimestamp()
     return String(buf);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  NTP tidssynkronisering
-// ─────────────────────────────────────────────────────────────────────────────
 void syncTime()
 {
     configTzTime(TIMEZONE, NTP_SERVER);
-    Serial.print("Venter på NTP sync");
+    Serial.print("[NTP] Venter på sync");
 
     struct tm timeInfo;
     int attempts = 0;
@@ -35,10 +31,12 @@ void syncTime()
     {
         char buf[30];
         strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeInfo);
-        Serial.printf("\nTid synkroniseret: %s\n", buf);
+        Serial.printf("\n[NTP] Synkroniseret: %s\n", buf);
     }
     else
     {
-        Serial.println("\nNTP sync fejlede – fortsætter alligevel.");
+        Serial.println("\n[NTP] Fejlede – fortsætter alligevel.");
     }
 }
+
+#endif
