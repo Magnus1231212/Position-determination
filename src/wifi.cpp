@@ -19,6 +19,7 @@ void connectWiFi()
     if (WiFi.status() == WL_CONNECTED)
     {
         Serial.printf(" OK: %s\n", WiFi.localIP().toString().c_str());
+        Serial.printf("Kanal: %d\n", WiFi.channel());
     }
     else
     {
