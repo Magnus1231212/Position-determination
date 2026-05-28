@@ -88,9 +88,11 @@ MAC-adressen kan identificere en specifik enhed, og dermed indirekte en person. 
 - MQTT-forbindelsen er krypteret med TLS og verificeres med et CA-certifikat, så trafikken ikke kan aflyttes
 - ESP32'en gemmer kun data i RAM under sniffe-fasen og sletter det igen når det er sendt – data gemmes aldrig permanent på enheden
 
-### Bemærkning
+### Overvejelser undervejs
 
-Nyere smartphones (iOS siden 2014, Android siden 2021) randomiserer deres MAC-adresse, hvilket betyder at den samme enhed kan optræde med forskellige MAC-adresser. Dette reducerer muligheden for at spore personer over tid.
+Under udviklingen overvejede vi løbende hvordan vi håndterede persondata. Først hashede vi MAC-adressen med MD5, men MD5 er deterministisk, samme MAC giver altid samme hash, hvilket betyder at man i teorien kunne genkende en enhed over tid. Vi skiftede derfor til en fuldt tilfældig ID genereret med ESP32's hardware tilfældighedsgenerator, så samme enhed får et nyt ID hver gang den registreres. Det betyder at vi ikke kan spore samme enhed over tid, men vi kan stadig tælle hvor mange enheder der er i området.
+
+Vi overvejede også at filtrere så vi kun registrerer enheder inden for vores opstillings område, for at minimere indsamling af data om enheder der ikke er relevante for projektet.
 
 ---
 
@@ -133,12 +135,21 @@ Vi valgte at bruge WiFi promiscuous mode på ESP32 til at sniffe MAC-adresser og
 
 ### Hvad vi lavede
 
-- Opsatte alle 3 ESP32-enheder med hver deres koordinater i `config.h`:
-  - ESP 1: x=0, y=0 (venstre hjørne)
-  - ESP 2: x=0, y=0 (højre hjørne)
-  - ESP 3: x=0, y=0 (midten øverst)
-- Uploadede samme kode til alle 3 ESP'er
-- Implementerede trilaterering – beregning af (x,y) position ud fra afstand fra 3 stationer
-- Testede nøjagtighed af positionsbestemmelse på bordet
+- Opsatte alle 3 ESP32-enheder med hver deres koordinater som build flags i `platformio.ini`:
+  - Master: x=0, y=0 (venstre hjørne)
+  - Slave 2: x=400, y=0 (højre hjørne)
+  - Slave 3: x=200, y=300 (midten øverst)
+- Implementerede ESP-NOW kommunikation så slave-enhederne sender deres målinger til master
+- Master modtager målinger fra alle tre stationer og kører trilaterering – beregning af (x,y) position ud fra afstand fra 3 stationer
+- Master snifter selv og kalder `updateStation()` direkte i stedet for at gå gennem ESP-NOW
+- Anonymiserede enhedens ID med en tilfældig 9-bits ID genereret med ESP32's hardware tilfældighedsgenerator
+- Sendte den beregnede position til MQTT-brokeren
+
+### Problemer vi løb ind i
+
+- **ESP-NOW kanal mismatch** – slave og master var på forskellige WiFi-kanaler. Routeren bruger kanal 2, men vi havde hardcodet kanal 11 i koden. Løsningen var at ændre `ESPNOW_CHANNEL` til 2 så alle enheder bruger samme kanal som routeren
+- **Master sendte ESP-NOW til sig selv** – `platformio.ini` havde både `ROLE_MASTER` og `ROLE_SLAVE` på master, så den prøvede at sende data til sig selv via ESP-NOW. Løsningen var at fjerne `ROLE_SLAVE` fra master i `platformio.ini`. Løsningen var at omskrive koden så master snifter WiFi-pakker selv og kalder `updateStation()` direkte, i stedet for at gå gennem ESP-NOW som slaverne gør.
+- **Samme device_id på alle slaves** – alle ESP'er havde samme `MQTT_CLIENT_ID` i `config.h`, så trilateringen troede det var samme station der sendte. Løsningen var at gøre `MQTT_CLIENT_ID` til et build flag i `platformio.ini` så hver slave har sit eget unikke ID
+- **mac_hash buffer for lille** – vi prøvede først at bruge en fuld UUID (36 bits) som anonym ID, men ESP-NOW pakken blev for stor. Løsningen var at bruge en 9-bits tilfældig ID genereret med ESP32's hardware tilfældighedsgenerator
 
 ---
